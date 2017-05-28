@@ -55,14 +55,30 @@ public class FileUtils {
         if (!sourceFile.exists()) {
             throw new IOException("Does not exist: " + sourceFile.getAbsolutePath());
         }
-        try (FileInputStream in = new FileInputStream(sourceFile); FileOutputStream out = new FileOutputStream(destFile)) {
-            copyFile(in, out);
+        FileInputStream in = new FileInputStream(sourceFile);
+        try {
+            FileOutputStream out = new FileOutputStream(destFile);
+            try {
+                copyFile(in, out);
+            } finally {
+                out.close();
+            }
+        } finally {
+            in.close();
         }
     }
 
     private static void copyFile(FileInputStream sourceStream, FileOutputStream destStream) throws IOException {
-        try (FileChannel fromChannel = sourceStream.getChannel(); FileChannel toChannel = destStream.getChannel()) {
-            fromChannel.transferTo(0, fromChannel.size(), toChannel);
+        FileChannel fromChannel = sourceStream.getChannel();
+        try {
+            FileChannel toChannel = destStream.getChannel();
+            try {
+                fromChannel.transferTo(0, fromChannel.size(), toChannel);
+            } finally {
+                toChannel.close();
+            }
+        } finally {
+            fromChannel.close();
         }
     }
 
@@ -73,12 +89,15 @@ public class FileUtils {
      * @throws IOException
      */
     public static void copyStreamToFile(InputStream inputStream, File destFile) throws IOException {
-        try (FileOutputStream fout = new FileOutputStream(destFile)) {
+        FileOutputStream fout = new FileOutputStream(destFile);
+        try {
             byte[] buf = new byte[4096];
             while (inputStream.available() > 0) {
                 int bytes = inputStream.read(buf);
                 fout.write(buf, 0, bytes);
             }
+        } finally {
+            fout.close();
         }
     }
 
@@ -92,8 +111,11 @@ public class FileUtils {
         if (in == null) {
             throw new IOException("unable to open input stream: " + uri);
         }
-        try (InputStream fin = new BufferedInputStream(in)) {
+        InputStream fin = new BufferedInputStream(in);
+        try {
             copyStreamToFile(fin, destFile);
+            fin.close();
+        } finally {
             fin.close();
         }
     }
@@ -107,7 +129,7 @@ public class FileUtils {
      * @see #getStringFromFile(File, String)
      */
     public static String getStringFromFile(File file) throws IOException {
-        return getStringFromFile(file, StandardCharsets.UTF_8.name());
+        return getStringFromFile(file, "UTF-8");
     }
 
     /**
@@ -121,13 +143,16 @@ public class FileUtils {
     public static String getStringFromFile(File file, String encoding) throws IOException {
         FileInputStream fin = new FileInputStream(file);
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(fin, encoding))) {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(fin, encoding));
+        try {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 sb.append(line).append("\n");
             }
             return sb.toString();
+        } finally {
+            reader.close();
         }
     }
 
@@ -178,18 +203,15 @@ public class FileUtils {
     @NonNull
     private static List<File> getWritableExternalFilesDirs() throws IOException {
         Context context = GBApplication.getContext();
-        File[] dirs;
+        File[] dirs = null;
         try {
-            dirs = context.getExternalFilesDirs(null);
-        } catch (NullPointerException | UnsupportedOperationException ex) {
-            // workaround for robolectric 3.1.2 not implementinc getExternalFilesDirs()
-            // https://github.com/robolectric/robolectric/issues/2531
             File dir = context.getExternalFilesDir(null);
             if (dir != null) {
                 dirs = new File[] { dir };
-            } else {
-                throw ex;
             }
+        } catch (NullPointerException | UnsupportedOperationException ex) {
+            // workaround for robolectric 3.1.2 not implementinc getExternalFilesDirs()
+            // https://github.com/robolectric/robolectric/issues/2531
         }
         if (dirs == null) {
             throw new IOException("Unable to access external files dirs: null");
